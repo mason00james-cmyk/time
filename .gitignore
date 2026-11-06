@@ -1,0 +1,12 @@
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+Packaged/
+*.zip
+.vs/
+.vscode/
+.idea/
+*.sln
+Thumbs.db
