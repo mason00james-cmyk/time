@@ -1,10 +1,12 @@
 // Second Hand - add this component to BP_FirstPersonCharacter.
-// Stage 1: time flow (slow-mo when standing still), fast movement, FOV kick.
+// Stage 2: time flow + death freeze, Enter to restart, HUD.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "SHPlayerAbilities.generated.h"
+
+class UInputComponent;
 
 UCLASS(ClassGroup = (SecondHand), meta = (BlueprintSpawnableComponent))
 class TIME_API USHPlayerAbilities : public UActorComponent
@@ -46,5 +48,12 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
+	void BindInput(APlayerController* PC);
+	void RestartLevel();
+
 	float CurrentDilation = 1.f;
+	bool bInputBound = false;
+
+	UPROPERTY()
+	TObjectPtr<UInputComponent> SHInput;
 };
