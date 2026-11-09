@@ -56,6 +56,8 @@ BLOOM = 0.3
 
 # Guard model tweaks (if guards face sideways, change GUARD_MESH_YAW by 90 or -90)
 GUARD_HEIGHT = 188.0       # cm - the model is auto-scaled to this height
+PISTOL_LENGTH = 26.0       # cm - guns are auto-scaled to these lengths
+SHOTGUN_LENGTH = 95.0
 GUARD_MESH_YAW = -90.0
 GUARD_MESH_Z = -94.0
 GUARD_SIGHT = 2000.0
@@ -215,6 +217,20 @@ SHOTGUN_MESH = None
 
 
 GUARD_SCALE = 1.0
+GUN_SCALES = {}
+
+
+def fit_scale(asset, target, label):
+    """Scale factor that makes the asset's longest side equal target (cm)."""
+    try:
+        e = asset.get_bounds().box_extent
+        size = max(e.x, e.y, e.z) * 2.0
+        sc = target / size if size > 0.01 else 1.0
+        log("%s imported %.1f cm long -> scaling by %.4f" % (label, size, sc))
+        return sc
+    except Exception as ex:
+        warn("Couldn't measure %s (%s) - using scale 1" % (label, ex))
+        return 1.0
 
 
 def load_guard_assets():
@@ -229,6 +245,10 @@ def load_guard_assets():
             warn("Couldn't measure SK_Guard (%s) - using scale 1" % e)
     PISTOL_MESH = find_asset("SM_Pistol", "StaticMesh")
     SHOTGUN_MESH = find_asset("SM_Shotgun", "StaticMesh")
+    if PISTOL_MESH:
+        GUN_SCALES["pistol"] = fit_scale(PISTOL_MESH, PISTOL_LENGTH, "SM_Pistol")
+    if SHOTGUN_MESH:
+        GUN_SCALES["shotgun"] = fit_scale(SHOTGUN_MESH, SHOTGUN_LENGTH, "SM_Shotgun")
     if not GUARD_MESH:
         warn("SK_Guard not found - import SK_Guard.fbx (Skeletal Mesh + Create Physics Asset). Guards will be invisible.")
     if not PISTOL_MESH:
@@ -283,6 +303,13 @@ def guard(label, loc, kind="PISTOL", yaw=180.0, active=True):
     if gun_asset and kind != "RUSHER":
         gun.set_static_mesh(gun_asset)
         gun.set_relative_location_and_rotation(vec(*GUN_OFFSET), rot(*GUN_ROTATION), False, False)
+        # The hand bone carries a hidden scale from Blender, so make the gun's scale absolute (ignore the bone)
+        gs = GUN_SCALES.get("shotgun" if gun_asset == SHOTGUN_MESH else "pistol", 1.0)
+        try:
+            gun.set_absolute(False, False, True)
+        except Exception as e:
+            warn("set_absolute failed: %s" % e)
+        gun.set_relative_scale3d(vec(gs, gs, gs))
     return tag(g, label, "Guards")
 
 
