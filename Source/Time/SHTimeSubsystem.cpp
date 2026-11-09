@@ -17,6 +17,7 @@ void USHTimeSubsystem::Tick(float DeltaTime)
 	if (!World) return;
 
 	const float Real = FApp::GetDeltaTime(); // undilated
+	HintTimeLeft = FMath::Max(0.f, HintTimeLeft - Real);
 
 	if (bWon)
 	{
@@ -87,4 +88,11 @@ void USHTimeSubsystem::Win()
 	{
 		UGameplayStatics::SetGlobalTimeDilation(World, FrozenDilation);
 	}
+}
+
+void USHTimeSubsystem::ShowHint(const FString& Text, float Seconds)
+{
+	HintText = Text;
+	HintDuration = FMath::Max(Seconds, 0.5f);
+	HintTimeLeft = HintDuration;
 }

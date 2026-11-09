@@ -26,6 +26,12 @@ public:
 	void AddMeter(float Seconds);
 	void Win();
 
+	/** Show an on-screen hint box for Seconds (real time). */
+	void ShowHint(const FString& Text, float Seconds = 7.f);
+	FString HintText;
+	float HintTimeLeft = 0.f;
+	float HintDuration = 1.f;
+
 	/** Game-time clock. Advances with time dilation, runs backward while rewinding. */
 	float GameClock = 0.f;
 	/** Seconds of rewind available (max MaxRewind). */

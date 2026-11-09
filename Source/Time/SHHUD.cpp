@@ -49,6 +49,37 @@ void ASHHUD::DrawHUD()
 		DrawRect(FLinearColor(0.2f, 0.6f, 1.f, Alpha), 0.f, 0.f, W, H);
 	}
 
+	// Hint bubble (top centre). Lines split on '|'.
+	if (TS->HintTimeLeft > 0.f && !TS->HintText.IsEmpty())
+	{
+		const float Fade = FMath::Clamp(FMath::Min(TS->HintTimeLeft, TS->HintDuration - TS->HintTimeLeft) / 0.35f, 0.f, 1.f);
+		TArray<FString> Lines;
+		TS->HintText.ParseIntoArray(Lines, TEXT("|"));
+		const float Scale = 1.6f;
+		float MaxW = 0.f, LineH = 0.f;
+		for (const FString& L : Lines)
+		{
+			float TW = 0.f, TH = 0.f;
+			GetTextSize(L, TW, TH, Font, Scale);
+			MaxW = FMath::Max(MaxW, TW);
+			LineH = FMath::Max(LineH, TH);
+		}
+		const float Pad = 22.f;
+		const float BoxW = MaxW + Pad * 2.f;
+		const float BoxH = LineH * Lines.Num() + Pad * 2.f;
+		const float BX = (W - BoxW) * 0.5f;
+		const float BY = H * 0.08f;
+		DrawRect(FLinearColor(0.05f, 0.07f, 0.12f, 0.78f * Fade), BX, BY, BoxW, BoxH);
+		DrawRect(FLinearColor(1.f, 0.85f, 0.4f, Fade), BX, BY, BoxW, 4.f);
+		for (int32 i = 0; i < Lines.Num(); ++i)
+		{
+			float TW = 0.f, TH = 0.f;
+			GetTextSize(Lines[i], TW, TH, Font, Scale);
+			const FLinearColor C = i == 0 ? FLinearColor(1.f, 0.85f, 0.4f, Fade) : FLinearColor(1.f, 1.f, 1.f, Fade);
+			DrawText(Lines[i], C, (W - TW) * 0.5f, BY + Pad + LineH * i, Font, Scale);
+		}
+	}
+
 	// Crosshair.
 	DrawRect(FLinearColor::White, W * 0.5f - 3.f, H * 0.5f - 3.f, 6.f, 6.f);
 
