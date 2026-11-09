@@ -74,16 +74,27 @@ GUN_OFFSET = (0.0, 0.0, 0.0)      # gun position relative to the right hand
 GUN_ROTATION = (0.0, 0.0, 0.0)    # (roll, pitch, yaw)
 
 # Rooms, in order. length = along the hall (X), width = side to side (Y). All in cm.
+# "hint" pops up on screen when you walk into the room. | starts a new line; the first line is the title.
 ROOMS = [
-    {"name": "Test Chamber",    "length": 2400, "width": 700,  "sign": "ROUND 1: STAND STILL. THINK."},
-    {"name": "Break Room",      "length": 1600, "width": 1400, "sign": "ROUND 2: LEFT CLICK TO PUNCH"},
-    {"name": "Security Desk",   "length": 1800, "width": 1400, "sign": "ROUND 3: DODGE, THEN PUNCH"},
-    {"name": "Ambush Corridor", "length": 2000, "width": 600,  "sign": "ROUND 4: HOLD R TO REWIND"},
-    {"name": "Human Bowling",   "length": 1800, "width": 600,  "sign": "ROUND 5: HUMAN BOWLING"},
-    {"name": "Bullet Gauntlet", "length": 2800, "width": 1000, "sign": "ROUND 6: THE GAUNTLET"},
-    {"name": "Crossfire",       "length": 1600, "width": 1600, "sign": "ROUND 7: CROSSFIRE"},
-    {"name": "Server Vault",    "length": 2400, "width": 1600, "sign": "FINAL ROUND: THE VAULT"},
+    {"name": "Test Chamber",    "length": 2400, "width": 700,  "sign": "ROUND 1",
+     "hint": "ROUND 1: TEST CHAMBER|Time only moves when YOU move.|Stand still to slow the bullets, then step through the gaps."},
+    {"name": "Break Room",      "length": 1600, "width": 1400, "sign": "ROUND 2",
+     "hint": "ROUND 2: BREAK ROOM|LEFT CLICK to punch.|Click when a guard is close and you'll lunge right into him."},
+    {"name": "Security Desk",   "length": 1800, "width": 1400, "sign": "ROUND 3",
+     "hint": "ROUND 3: SECURITY DESK|This guard shoots back.|Dodge his bullets, close the distance, then punch."},
+    {"name": "Ambush Corridor", "length": 2000, "width": 600,  "sign": "ROUND 4",
+     "hint": "ROUND 4: AMBUSH|Got hit? Don't restart.|HOLD R to rewind time and try a different move."},
+    {"name": "Human Bowling",   "length": 1800, "width": 600,  "sign": "ROUND 5",
+     "hint": "ROUND 5: HUMAN BOWLING|Punch the front guard into the others.|A flying body knocks out anyone it hits."},
+    {"name": "Bullet Gauntlet", "length": 2800, "width": 1000, "sign": "ROUND 6",
+     "hint": "ROUND 6: THE GAUNTLET|Read the bullet streams. Move only through the gaps.|Take the ramp up and take them out."},
+    {"name": "Crossfire",       "length": 1600, "width": 1600, "sign": "ROUND 7",
+     "hint": "ROUND 7: CROSSFIRE|Two shotguns, opposite sides.|Stand between them... then step out of the way."},
+    {"name": "Server Vault",    "length": 2400, "width": 1600, "sign": "FINAL ROUND",
+     "hint": "FINAL ROUND: THE VAULT|Knock out EVERY guard to unlock the elevator.|Lost? Walk in, see where they hide, then hold R."},
 ]
+WALL_SIGNS = True          # big round number on each room's far wall (the instructions are the on-screen hints)
+HINT_SECONDS = 7.0
 
 # =====================================================================================
 # Plumbing (you shouldn't need to touch below here unless adding new kinds of things)
@@ -367,13 +378,29 @@ def guard(label, loc, kind="PISTOL", yaw=180.0, active=True):
     return tag(g, label, "Guards")
 
 
-def goal(loc):
+def hint(label, x, width, text):
+    if not hasattr(unreal, "SHHintVolume"):
+        warn("SHHintVolume class missing - rebuild the C++.")
+        return None
+    h = EAS.spawn_actor_from_class(unreal.SHHintVolume, vec(x, 0, 250), rot())
+    h.set_editor_property("message", text)
+    h.set_editor_property("seconds", float(HINT_SECONDS))
+    try:
+        h.get_editor_property("trigger").set_box_extent(vec(150, width / 2, 250))
+    except Exception as e:
+        warn("Hint size issue: %s" % e)
+    return tag(h, label, "Hints")
+
+
+def goal(loc, required=None):
     if hasattr(unreal, "SHGoal"):
         a = EAS.spawn_actor_from_class(unreal.SHGoal, vec(loc[0], loc[1], loc[2] + 150), rot())
         try:
             a.get_editor_property("pad").set_material(0, MATS["goal"])
         except Exception:
             pass
+        if required:
+            a.set_editor_property("required_guards", [g for g in required if g])
         tag(a, "Exit_Elevator", "Gameplay")
     else:
         warn("SHGoal class missing (Stage 5 C++ not built yet) - placing a plain marker instead.")
@@ -493,9 +520,11 @@ def build_rooms():
         wall("Divider_%d_b" % (i + 1), xd, hi, xd, half, folder="Room%d" % (i + 1))
         # Room i's sign goes on its far wall (faces the player walking +X), away from the door
         sign_y = -side * min(Wa / 4, 250)
-        sign(ROOMS[i]["sign"], (xd - WALL_THICK / 2 - 2, sign_y, 300), 180, 50)
+        if WALL_SIGNS:
+            sign(ROOMS[i]["sign"], (xd - WALL_THICK / 2 - 2, sign_y, 300), 180, 70)
 
-    sign(ROOMS[-1]["sign"], (total - WALL_THICK / 2 - 2, 0, 380), 180, 50)
+    if WALL_SIGNS:
+        sign(ROOMS[-1]["sign"], (total - WALL_THICK / 2 - 2, 0, 380), 180, 70)
     if DETAIL:
         build_detail(starts, door_side)
     return starts, door_side
@@ -606,10 +635,16 @@ def populate(starts, door_side):
             box("R8_Rack_%d_%d" % (row, col), (x0 + xo, yo, 175), (120, 280, 350), "turret", "Room8")
     hidden = [(620, -450, "PISTOL"), (620, 450, "RUSHER"), (1070, 0, "SHOTGUN"),
               (1070, 450, "PISTOL"), (1520, -450, "RUSHER"), (1520, 450, "PISTOL")]
+    vault = []
     for n, (xo, yo, kind) in enumerate(hidden):
-        guard("R8_Guard_%d" % n, (x0 + xo, yo, 0), kind)
-    goal((x0 + L - 250, 0, 0))
-    sign("EXIT", (x0 + L - WALL_THICK / 2 - 2, 0, 330), 180, 90, "#1E8C45")
+        vault.append(guard("R8_Guard_%d" % n, (x0 + xo, yo, 0), kind))
+    goal((x0 + L - 250, 0, 0), required=vault)
+    sign("EXIT", (x0 + L - WALL_THICK / 2 - 2, 0, 250), 180, 90, "#7CFF9B")
+
+    # On-screen hints at each room's entrance
+    for i, r in enumerate(ROOMS):
+        if r.get("hint"):
+            hint("Hint_%d" % (i + 1), S[i] + 200, r["width"], r["hint"])
 
 
 # =====================================================================================

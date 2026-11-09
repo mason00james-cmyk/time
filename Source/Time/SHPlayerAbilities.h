@@ -67,10 +67,18 @@ public:
 
 	/** Ragdoll launch speed (cm/s) forward and up. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
-	float PunchForward = 1100.f;
+	float PunchForward = 2400.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
-	float PunchUp = 300.f;
+	float PunchUp = 450.f;
+
+	/** Show the cartoon fist in the corner of the screen. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
+	bool bShowFist = true;
+
+	/** Hide the template's first-person arms / body meshes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Camera")
+	bool bHideTemplateMeshes = true;
 
 protected:
 	virtual void BeginPlay() override;

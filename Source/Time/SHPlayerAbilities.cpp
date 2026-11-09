@@ -6,6 +6,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "GameFramework/Character.h"
@@ -39,7 +40,21 @@ void USHPlayerAbilities::BeginPlay()
 	PlayerRewind->bRestoreControlRotation = true;
 	PlayerRewind->RegisterComponent();
 
-	if (ACharacter* Char = Cast<ACharacter>(GetOwner())) BuildFist(Char);
+	if (ACharacter* Char = Cast<ACharacter>(GetOwner()))
+	{
+		if (bHideTemplateMeshes)
+		{
+			// The First Person template gives the player arms (and a body). We only want our own fist.
+			TArray<USkeletalMeshComponent*> Skels;
+			Char->GetComponents<USkeletalMeshComponent>(Skels);
+			for (USkeletalMeshComponent* S : Skels)
+			{
+				S->SetHiddenInGame(true, true);
+				S->SetCastShadow(false);
+			}
+		}
+		if (bShowFist) BuildFist(Char);
+	}
 }
 
 void USHPlayerAbilities::BuildFist(ACharacter* Char)
@@ -73,8 +88,8 @@ void USHPlayerAbilities::BuildFist(ACharacter* Char)
 	};
 
 	// A chunky cartoon fist + sleeve, bottom right of the screen.
-	Part(TEXT("Fist"), Sphere, FVector(0.f, 0.f, 0.f), FRotator::ZeroRotator, FVector(0.13f, 0.11f, 0.11f), FLinearColor(0.62f, 0.40f, 0.24f));
-	Part(TEXT("Sleeve"), Cyl, FVector(-14.f, 0.f, 0.f), FRotator(90.f, 0.f, 0.f), FVector(0.11f, 0.11f, 0.2f), FLinearColor(0.15f, 0.15f, 0.18f));
+	Part(TEXT("Fist"), Sphere, FVector(0.f, 0.f, 0.f), FRotator::ZeroRotator, FVector(0.085f, 0.072f, 0.072f), FLinearColor(0.62f, 0.40f, 0.24f));
+	Part(TEXT("Sleeve"), Cyl, FVector(-10.f, 0.f, 0.f), FRotator(90.f, 0.f, 0.f), FVector(0.07f, 0.07f, 0.14f), FLinearColor(0.15f, 0.15f, 0.18f));
 	UpdateFist(0.f);
 }
 
@@ -85,8 +100,8 @@ void USHPlayerAbilities::UpdateFist(float Real)
 	// Out fast, back slower.
 	const float T = FistAnim < 0.3f ? FistAnim / 0.3f : 1.f - (FistAnim - 0.3f) / 0.7f;
 	const float E = FMath::Clamp(T, 0.f, 1.f);
-	const FVector Rest(45.f, 22.f, -24.f);
-	const FVector Out(85.f, 6.f, -10.f);
+	const FVector Rest(48.f, 24.f, -26.f);
+	const FVector Out(82.f, 7.f, -12.f);
 	FistRoot->SetRelativeLocation(FMath::Lerp(Rest, Out, E));
 }
 

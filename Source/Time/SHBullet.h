@@ -37,7 +37,7 @@ public:
 	FLinearColor Color = FLinearColor(1.f, 0.35f, 0.05f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bullet")
-	float GuardKnockback = 600.f;
+	float GuardKnockback = 1400.f;
 
 	UPROPERTY(VisibleAnywhere, Category = "Bullet")
 	TObjectPtr<USphereComponent> Collision;
