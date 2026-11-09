@@ -42,12 +42,20 @@ COLORS = {
     "shotgun": "#FF8A00",   # orange suit
 }
 
+# Roof + indoor lights (a roof blocks the sun, so each room gets ceiling lights)
+ROOF = True
+ROOF_THICK = 20
+ROOM_LIGHT_LUMENS = 12000      # brightness of each ceiling light
+ROOM_LIGHT_SPACING = 800       # cm between ceiling lights
+ROOM_LIGHT_SHADOWS = True      # turn off if the game runs slow
+
 SKY_FOG_COLOR = "#5BC8F5"
 SUN_INTENSITY = 7.0        # lux
 SATURATION = 1.15
 BLOOM = 0.3
 
 # Guard model tweaks (if guards face sideways, change GUARD_MESH_YAW by 90 or -90)
+GUARD_HEIGHT = 188.0       # cm - the model is auto-scaled to this height
 GUARD_MESH_YAW = -90.0
 GUARD_MESH_Z = -94.0
 GUARD_SIGHT = 2000.0
@@ -206,9 +214,19 @@ PISTOL_MESH = None
 SHOTGUN_MESH = None
 
 
+GUARD_SCALE = 1.0
+
+
 def load_guard_assets():
-    global GUARD_MESH, PISTOL_MESH, SHOTGUN_MESH
+    global GUARD_MESH, PISTOL_MESH, SHOTGUN_MESH, GUARD_SCALE
     GUARD_MESH = find_asset("SK_Guard", "SkeletalMesh")
+    if GUARD_MESH:
+        try:
+            h = GUARD_MESH.get_bounds().box_extent.z * 2.0
+            GUARD_SCALE = GUARD_HEIGHT / h if h > 1.0 else 1.0
+            log("SK_Guard imported %.1f cm tall -> scaling guards by %.4f" % (h, GUARD_SCALE))
+        except Exception as e:
+            warn("Couldn't measure SK_Guard (%s) - using scale 1" % e)
     PISTOL_MESH = find_asset("SM_Pistol", "StaticMesh")
     SHOTGUN_MESH = find_asset("SM_Shotgun", "StaticMesh")
     if not GUARD_MESH:
@@ -249,6 +267,7 @@ def guard(label, loc, kind="PISTOL", yaw=180.0, active=True):
         except Exception:
             mesh.set_editor_property("skeletal_mesh_asset", GUARD_MESH)
         mesh.set_relative_location_and_rotation(vec(0, 0, GUARD_MESH_Z), rot(yaw=GUARD_MESH_YAW), False, False)
+        mesh.set_relative_scale3d(vec(GUARD_SCALE, GUARD_SCALE, GUARD_SCALE))
         try:
             names = [str(n) for n in mesh.get_material_slot_names()]
             suit = [i for i, n in enumerate(names) if "suit" in n.lower()]
@@ -281,6 +300,20 @@ def goal(loc):
 
 
 # ---------------- lighting / look ----------------
+
+def room_light(label, loc, radius):
+    a = EAS.spawn_actor_from_class(unreal.PointLight, vec(*loc), rot())
+    try:
+        lc = a.get_editor_property("light_component")
+        lc.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
+        lc.set_intensity(ROOM_LIGHT_LUMENS)
+        lc.set_attenuation_radius(radius)
+        lc.set_light_color(hex_to_linear("#FFF8EC"))
+        lc.set_cast_shadows(ROOM_LIGHT_SHADOWS)
+    except Exception as e:
+        warn("Room light issue: %s" % e)
+    return tag(a, label, "Lighting")
+
 
 def build_lighting():
     sun = EAS.spawn_actor_from_class(unreal.DirectionalLight, vec(0, 0, 1000), rot(pitch=-45, yaw=35))
@@ -344,6 +377,17 @@ def build_rooms():
         box("Floor_%d" % (i + 1), (x0 + L / 2, 0, -10), (L, W + WALL_THICK * 2, 20), "floor", "Room%d" % (i + 1))
         wall("WallL_%d" % (i + 1), x0, W / 2 + WALL_THICK / 2, x0 + L, W / 2 + WALL_THICK / 2, folder="Room%d" % (i + 1))
         wall("WallR_%d" % (i + 1), x0, -W / 2 - WALL_THICK / 2, x0 + L, -W / 2 - WALL_THICK / 2, folder="Room%d" % (i + 1))
+
+    # Roof + ceiling lights
+    for i, r in enumerate(ROOMS):
+        x0, L, W = starts[i], r["length"], r["width"]
+        if ROOF:
+            box("Roof_%d" % (i + 1), (x0 + L / 2, 0, WALL_HEIGHT + ROOF_THICK / 2),
+                (L + WALL_THICK, W + WALL_THICK * 2, ROOF_THICK), "wall", "Room%d" % (i + 1))
+        count = max(1, int(round(L / ROOM_LIGHT_SPACING)))
+        for n in range(count):
+            lx = x0 + L * (n + 0.5) / count
+            room_light("Light_%d_%d" % (i + 1, n), (lx, 0, WALL_HEIGHT - 60), max(L / count, W) * 1.2)
 
     # Back wall of room 1, front wall of last room
     W0 = ROOMS[0]["width"]
