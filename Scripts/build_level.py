@@ -37,6 +37,10 @@ COLORS = {
     "pink":    "#FF9EB5",
     "turret":  "#3A3F4B",
     "goal":    "#7CFF9B",
+    "floor2":  "#6CCFE0",
+    "blue":    "#8EC5FF",
+    "screen":  "#1F2430",
+    "crate":   "#E8A15C",
     "rusher":  "#2F6BFF",   # blue suit
     "pistol":  "#FF3B30",   # red suit
     "shotgun": "#FF8A00",   # orange suit
@@ -48,6 +52,11 @@ ROOF_THICK = 20
 ROOM_LIGHT_LUMENS = 12000      # brightness of each ceiling light
 ROOM_LIGHT_SPACING = 800       # cm between ceiling lights
 ROOM_LIGHT_SHADOWS = True      # turn off if the game runs slow
+
+# Detail
+DETAIL = True              # checker floors, wall stripes, baseboards, light panels, pillars, crates, screens
+TILE = 300                 # checker tile size (cm)
+ACCENTS = ["yellow", "mint", "pink", "blue"]   # each room gets the next accent color
 
 SKY_FOG_COLOR = "#5BC8F5"
 SUN_INTENSITY = 7.0        # lux
@@ -187,7 +196,12 @@ def wall(label, x0, y0, x1, y1, height=WALL_HEIGHT, mat="wall", folder="Geometry
         box(label + "_Trim", (cx, cy, height + 6), (sx + 10, sy + 10, 12), "trim", folder)
 
 
-def sign(text, loc, yaw, size=60, color="#2B2F3A"):
+def sign(text, loc, yaw, size=60, color="#FFFFFF", screen=True):
+    if screen and DETAIL:
+        # dark "monitor" behind the text; pushed back toward the wall (+X when facing -X)
+        back = 1 if yaw == 180 else -1
+        w = len(text) * size * 0.62 + 80
+        box("Screen_" + text[:12], (loc[0] + back * 6, loc[1], loc[2]), (6, w, size * 1.9), "screen", "Signs")
     a = EAS.spawn_actor_from_class(unreal.TextRenderActor, vec(*loc), rot(yaw=yaw))
     try:
         comp = a.get_editor_property("text_render")
@@ -195,6 +209,7 @@ def sign(text, loc, yaw, size=60, color="#2B2F3A"):
         comp.set_world_size(size)
         comp.set_text_render_color(unreal.Color(*[int(color.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)], 255))
         comp.set_horizontal_alignment(unreal.HorizTextAligment.EHTA_CENTER)
+        comp.set_vertical_alignment(unreal.VerticalTextAligment.EVRTA_TEXT_CENTER)
     except Exception as e:
         warn("Sign setup issue: %s" % e)
     return tag(a, "Sign_" + text[:20], "Signs")
@@ -202,8 +217,39 @@ def sign(text, loc, yaw, size=60, color="#2B2F3A"):
 
 # ---------------- gameplay actors ----------------
 
+ASSET_PATHS = None
+
+
+def all_assets():
+    global ASSET_PATHS
+    if ASSET_PATHS is None:
+        ASSET_PATHS = list(EAL.list_assets("/Game", recursive=True, include_folder=False))
+    return ASSET_PATHS
+
+
+def find_anim(word):
+    """Find an AnimSequence whose name contains `word` and that belongs to the guard's skeleton."""
+    for path in all_assets():
+        short = path.split("/")[-1].split(".")[0]
+        if word.lower() not in short.lower():
+            continue
+        asset = unreal.load_asset(path)
+        if not asset or asset.get_class().get_name() != "AnimSequence":
+            continue
+        try:
+            skel = asset.get_editor_property("skeleton")
+            if skel is None or "guard" not in skel.get_name().lower():
+                continue
+        except Exception:
+            continue
+        log("Using animation %s for %s" % (short, word))
+        return asset
+    warn("No '%s' animation found - guards will T-pose. Re-import the new SK_Guard.fbx." % word)
+    return None
+
+
 def find_asset(name, cls_name=None):
-    for path in EAL.list_assets("/Game", recursive=True, include_folder=False):
+    for path in all_assets():
         if path.split("/")[-1].split(".")[0] == name:
             asset = unreal.load_asset(path)
             if asset and (cls_name is None or asset.get_class().get_name() == cls_name):
@@ -212,6 +258,8 @@ def find_asset(name, cls_name=None):
 
 
 GUARD_MESH = None
+IDLE_ANIM = None
+RUN_ANIM = None
 PISTOL_MESH = None
 SHOTGUN_MESH = None
 
@@ -234,7 +282,9 @@ def fit_scale(asset, target, label):
 
 
 def load_guard_assets():
-    global GUARD_MESH, PISTOL_MESH, SHOTGUN_MESH, GUARD_SCALE
+    global GUARD_MESH, PISTOL_MESH, SHOTGUN_MESH, GUARD_SCALE, IDLE_ANIM, RUN_ANIM
+    IDLE_ANIM = find_anim("Idle")
+    RUN_ANIM = find_anim("Run")
     GUARD_MESH = find_asset("SK_Guard", "SkeletalMesh")
     if GUARD_MESH:
         try:
@@ -279,6 +329,10 @@ def guard(label, loc, kind="PISTOL", yaw=180.0, active=True):
     g.set_editor_property("guard_type", getattr(unreal.SHGuardType, kind))
     g.set_editor_property("sight_range", float(GUARD_SIGHT))
     g.set_editor_property("active", bool(active))
+    if IDLE_ANIM:
+        g.set_editor_property("idle_anim", IDLE_ANIM)
+    if RUN_ANIM:
+        g.set_editor_property("run_anim", RUN_ANIM)
 
     mesh = g.get_editor_property("mesh")
     if GUARD_MESH:
@@ -415,6 +469,8 @@ def build_rooms():
         for n in range(count):
             lx = x0 + L * (n + 0.5) / count
             room_light("Light_%d_%d" % (i + 1, n), (lx, 0, WALL_HEIGHT - 60), max(L / count, W) * 1.2)
+            if ROOF and DETAIL:
+                box("LightPanel_%d_%d" % (i + 1, n), (lx, 0, WALL_HEIGHT - 4), (220, 120, 8), "trim", "Room%d" % (i + 1))
 
     # Back wall of room 1, front wall of last room
     W0 = ROOMS[0]["width"]
@@ -440,7 +496,48 @@ def build_rooms():
         sign(ROOMS[i]["sign"], (xd - WALL_THICK / 2 - 2, sign_y, 300), 180, 50)
 
     sign(ROOMS[-1]["sign"], (total - WALL_THICK / 2 - 2, 0, 380), 180, 50)
+    if DETAIL:
+        build_detail(starts, door_side)
     return starts, door_side
+
+
+def build_detail(starts, door_side):
+    for i, r in enumerate(ROOMS):
+        x0, L, W = starts[i], r["length"], r["width"]
+        f = "Room%d" % (i + 1)
+        accent = ACCENTS[i % len(ACCENTS)]
+
+        # Checker floor (only the darker squares are extra pieces)
+        nx, ny = int(math.ceil(L / TILE)), int(math.ceil(W / TILE))
+        for ix in range(nx):
+            for iy in range(ny):
+                if (ix + iy) % 2 == 0:
+                    continue
+                xa, xb = x0 + ix * TILE, min(x0 + (ix + 1) * TILE, x0 + L)
+                ya, yb = -W / 2 + iy * TILE, min(-W / 2 + (iy + 1) * TILE, W / 2)
+                box("Tile_%d_%d_%d" % (i + 1, ix, iy), ((xa + xb) / 2, (ya + yb) / 2, 1), (xb - xa, yb - ya, 2), "floor2", f)
+
+        # Baseboards + a colored stripe along both side walls
+        for side in (1, -1):
+            y = side * (W / 2 - 4)
+            box("Baseboard_%d_%d" % (i + 1, side), (x0 + L / 2, y, 12), (L, 8, 24), accent, f)
+            box("Stripe_%d_%d" % (i + 1, side), (x0 + L / 2, side * (W / 2 - 3), 150), (L, 6, 36), accent, f)
+
+        # Pillars in the big open rooms (not the gauntlet / vault, where cover would change the puzzle)
+        if W >= 1400 and i not in (5, 7):
+            for fx in (0.22, 0.78):
+                for fy in (-0.32, 0.32):
+                    px, py = x0 + L * fx, W * fy
+                    box("Pillar_%d_%.0f_%.0f" % (i + 1, fx * 100, fy * 100), (px, py, WALL_HEIGHT / 2), (90, 90, WALL_HEIGHT), "wall", f)
+                    box("PillarBand_%d_%.0f_%.0f" % (i + 1, fx * 100, fy * 100), (px, py, 150), (96, 96, 36), accent, f)
+
+        # A couple of crates in the corner by the entrance (away from the door)
+        if i in (1, 2, 6):
+            side = -door_side[i][0] if i in door_side else 1
+            cy = side * (W / 2 - 110)
+            box("Crate_%d_a" % (i + 1), (x0 + 130, cy, 60), (120, 120, 120), "crate", f)
+            box("Crate_%d_b" % (i + 1), (x0 + 260, cy, 45), (90, 90, 90), "crate", f)
+            box("Crate_%d_c" % (i + 1), (x0 + 140, cy, 160), (80, 80, 80), "crate", f, rotation=rot(yaw=20))
 
 
 def populate(starts, door_side):

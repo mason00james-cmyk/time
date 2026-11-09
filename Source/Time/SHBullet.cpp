@@ -1,5 +1,6 @@
 #include "SHBullet.h"
 #include "SHGuard.h"
+#include "SHMuzzleFlash.h"
 #include "SHRewindComponent.h"
 #include "SHTimeSubsystem.h"
 #include "Components/SphereComponent.h"
@@ -61,6 +62,7 @@ ASHBullet* ASHBullet::Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FV
 	Bullet->Shooter = InShooter;
 	Bullet->Velocity = Direction.GetSafeNormal() * Bullet->Speed;
 	Bullet->FinishSpawning(SpawnXform);
+	ASHMuzzleFlash::Spawn(World, Location, Direction.Rotation());
 	return Bullet;
 }
 

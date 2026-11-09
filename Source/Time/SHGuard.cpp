@@ -64,6 +64,14 @@ void ASHGuard::BeginPlay()
 void ASHGuard::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// Keep the gun in the hand but always pointing where the guard faces
+	// (the model's barrel points along its -Y, hence the +90 yaw).
+	if (bAlive && GunMesh->GetStaticMesh())
+	{
+		GunMesh->SetWorldRotation(GetActorRotation() + FRotator(0.f, 90.f, 0.f));
+	}
+
 	if (!bAlive || !bActive) return;
 
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
