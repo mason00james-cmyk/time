@@ -37,7 +37,9 @@ void ASHTurret::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
-	if (!TS || TS->bDead) return;
+	if (!TS || TS->bRewinding || TS->bDead) return;
+
+	if (NextShotTime > TS->GameClock + FireInterval) NextShotTime = TS->GameClock + FireInterval; // after rewind
 	if (TS->GameClock < NextShotTime) return;
 	NextShotTime = TS->GameClock + FireInterval;
 
