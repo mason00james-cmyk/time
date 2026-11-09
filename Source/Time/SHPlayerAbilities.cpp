@@ -1,5 +1,7 @@
 #include "SHPlayerAbilities.h"
+#include "SHGuard.h"
 #include "SHHUD.h"
+#include "SHRewindComponent.h"
 #include "SHTimeSubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "Components/InputComponent.h"
@@ -27,6 +29,11 @@ void USHPlayerAbilities::BeginPlay()
 		Move->BrakingDecelerationWalking = Acceleration;
 		Move->GroundFriction = 12.f;
 	}
+
+	// The player records itself too, so rewind moves you back with everything else.
+	USHRewindComponent* PlayerRewind = NewObject<USHRewindComponent>(GetOwner(), TEXT("PlayerRewind"));
+	PlayerRewind->bRestoreControlRotation = true;
+	PlayerRewind->RegisterComponent();
 }
 
 void USHPlayerAbilities::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -41,25 +48,29 @@ void USHPlayerAbilities::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		if (APlayerController* PC = Cast<APlayerController>(Char->GetController())) BindInput(PC);
 	}
 
+	const float Real = FApp::GetDeltaTime(); // undilated
+	PunchCooldown -= Real;
+	PunchMoveTimer -= Real;
+
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
-	if (TS && TS->bDead)
+	if (!TS) return;
+
+	if (TS->bRewinding || TS->bDead || TS->bWon)
 	{
-		// The subsystem freezes the world on death; freeze the player with it.
+		// The subsystem freezes the world; freeze the player with it.
 		Char->CustomTimeDilation = 1.f;
 		CurrentDilation = SlowDilation;
 		return;
 	}
 
-	const float Real = FApp::GetDeltaTime(); // real seconds, not slowed down
-
-	// Moving = holding a movement key or in the air. We check input (acceleration), not velocity,
+	// Moving = holding a movement key, in the air, or mid-punch. Input (acceleration), not velocity,
 	// so time snaps back the instant a key is pressed.
 	UCharacterMovementComponent* Move = Char->GetCharacterMovement();
-	const bool bMoving = Move->GetCurrentAcceleration().SizeSquared() > 1.f || Move->IsFalling();
+	const bool bMoving = Move->GetCurrentAcceleration().SizeSquared() > 1.f || Move->IsFalling() || PunchMoveTimer > 0.f;
 
 	CurrentDilation = FMath::FInterpTo(CurrentDilation, bMoving ? 1.f : SlowDilation, Real, InterpSpeed);
 	UGameplayStatics::SetGlobalTimeDilation(this, CurrentDilation);
-	Char->CustomTimeDilation = 1.f / CurrentDilation; // keep the player itself at real speed
+	Char->CustomTimeDilation = 1.f / CurrentDilation; // player always runs at real speed
 
 	if (UCameraComponent* Cam = Char->FindComponentByClass<UCameraComponent>())
 	{
@@ -72,6 +83,9 @@ void USHPlayerAbilities::BindInput(APlayerController* PC)
 {
 	SHInput = NewObject<UInputComponent>(GetOwner(), UInputComponent::StaticClass(), TEXT("SHInput"));
 	SHInput->RegisterComponent();
+	SHInput->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &USHPlayerAbilities::Punch);
+	SHInput->BindKey(EKeys::R, IE_Pressed, this, &USHPlayerAbilities::RewindPressed);
+	SHInput->BindKey(EKeys::R, IE_Released, this, &USHPlayerAbilities::RewindReleased);
 	SHInput->BindKey(EKeys::Enter, IE_Pressed, this, &USHPlayerAbilities::RestartLevel);
 	PC->PushInputComponent(SHInput);
 
@@ -79,10 +93,54 @@ void USHPlayerAbilities::BindInput(APlayerController* PC)
 	bInputBound = true;
 }
 
+void USHPlayerAbilities::Punch()
+{
+	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
+	if (!TS || TS->bDead || TS->bWon || TS->bRewinding || PunchCooldown > 0.f) return;
+
+	PunchCooldown = PunchCooldownTime;
+	PunchMoveTimer = 0.25f; // punching moves time
+
+	APawn* Pawn = Cast<APawn>(GetOwner());
+	AController* Ctrl = Pawn ? Pawn->GetController() : nullptr;
+	if (!Ctrl) return;
+
+	FVector EyeLoc;
+	FRotator EyeRot;
+	Ctrl->GetPlayerViewPoint(EyeLoc, EyeRot);
+	const FVector Fwd = EyeRot.Vector();
+
+	TArray<FHitResult> Hits;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(Punch), false, Pawn);
+	GetWorld()->SweepMultiByObjectType(Hits, EyeLoc, EyeLoc + Fwd * PunchRange, FQuat::Identity,
+		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(PunchRadius), Params);
+
+	for (const FHitResult& Hit : Hits)
+	{
+		ASHGuard* Guard = Cast<ASHGuard>(Hit.GetActor());
+		if (Guard && Guard->IsAlive())
+		{
+			const FVector Flat = FVector(Fwd.X, Fwd.Y, 0.f).GetSafeNormal();
+			Guard->KnockOut(Flat * PunchForward + FVector(0.f, 0.f, PunchUp));
+			break;
+		}
+	}
+}
+
+void USHPlayerAbilities::RewindPressed()
+{
+	if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) TS->StartRewind();
+}
+
+void USHPlayerAbilities::RewindReleased()
+{
+	if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) TS->StopRewind();
+}
+
 void USHPlayerAbilities::RestartLevel()
 {
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
-	if (TS && TS->bDead)
+	if (TS && (TS->bDead || TS->bWon))
 	{
 		UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 		UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this)));

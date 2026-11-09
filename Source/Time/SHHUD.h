@@ -1,4 +1,4 @@
-// Second Hand - simple canvas HUD: crosshair, slow-mo tint, death screen.
+// Second Hand - simple canvas HUD: crosshair, rewind meter, slow-mo tint, death and rewind screens.
 #pragma once
 
 #include "CoreMinimal.h"

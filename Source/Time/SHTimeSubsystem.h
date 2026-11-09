@@ -1,4 +1,4 @@
-// Second Hand - owns the game clock and player death.
+// Second Hand - owns the game clock, rewind state, the rewind meter and player death.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -20,14 +20,28 @@ public:
 		return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
 	}
 
+	void StartRewind();
+	void StopRewind();
 	void PlayerDied();
+	void AddMeter(float Seconds);
+	void Win();
 
-	/** Game-time clock. Advances with time dilation (slow when the world is slow). */
+	/** Game-time clock. Advances with time dilation, runs backward while rewinding. */
 	float GameClock = 0.f;
-	/** Real seconds played. */
+	/** Seconds of rewind available (max MaxRewind). */
+	float RewindMeter = 4.f;
+	/** Real seconds played (for the victory screen / time trial). */
 	float RunTime = 0.f;
 
+	bool bRewinding = false;
 	bool bDead = false;
+	bool bWon = false;
+	float WinTime = 0.f;
 
-	static constexpr float FrozenDilation = 0.0001f; // Unreal's minimum: effectively frozen
+	static constexpr float MaxRewind = 4.f;
+	static constexpr float FrozenDilation = 0.0001f;   // Unreal's minimum: effectively frozen
+	static constexpr float MeterRegenPerSecond = 0.25f;
+
+private:
+	float RewindFloor = 0.f;
 };
