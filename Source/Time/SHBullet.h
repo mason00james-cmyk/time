@@ -21,7 +21,7 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Spawn a bullet flying in Direction. Class may be null (uses ASHBullet). */
-	static ASHBullet* Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* Shooter);
+	static ASHBullet* Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* Shooter, bool bPlaySound = true);
 
 	virtual bool IsRewindAlive() const override { return bLive; }
 	virtual void SetRewindAlive(bool bAlive) override;

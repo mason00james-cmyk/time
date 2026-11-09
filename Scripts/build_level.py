@@ -21,6 +21,7 @@ import unreal
 # =====================================================================================
 
 MAP_PATH = "/Game/SecondHand/Maps/L_SecondHand"
+AUDIO_DIR = "/Game/SecondHand/Audio"     # .wav files in <project>/Audio are imported here
 MAT_DIR = "/Game/SecondHand/Materials"
 
 WALL_HEIGHT = 450          # cm
@@ -159,6 +160,41 @@ def tag(actor, label, folder):
     except Exception:
         pass
     return actor
+
+
+# ---------------- audio ----------------
+
+def import_audio():
+    import os
+    src = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()), "Audio")
+    if not os.path.isdir(src):
+        warn("No Audio folder at %s - skipping sounds" % src)
+        return
+    tasks = []
+    for f in sorted(os.listdir(src)):
+        if not f.lower().endswith(".wav"):
+            continue
+        name = os.path.splitext(f)[0]
+        if EAL.does_asset_exist(AUDIO_DIR + "/" + name):
+            continue
+        t = unreal.AssetImportTask()
+        t.set_editor_property("filename", os.path.join(src, f))
+        t.set_editor_property("destination_path", AUDIO_DIR)
+        t.set_editor_property("automated", True)
+        t.set_editor_property("replace_existing", True)
+        t.set_editor_property("save", True)
+        tasks.append(t)
+    if tasks:
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
+        log("Imported %d sounds" % len(tasks))
+    loop = AUDIO_DIR + "/SFX_Rewind"
+    if EAL.does_asset_exist(loop):
+        snd = unreal.load_asset(loop)
+        try:
+            snd.set_editor_property("looping", True)
+            EAL.save_loaded_asset(snd)
+        except Exception as e:
+            warn("Couldn't set rewind sound to loop: %s" % e)
 
 
 # ---------------- materials ----------------
@@ -650,6 +686,7 @@ def populate(starts, door_side):
 # =====================================================================================
 
 def main():
+    import_audio()
     open_or_create_level()
     with unreal.ScopedEditorTransaction("Build Second Hand level"):
         clear_generated()

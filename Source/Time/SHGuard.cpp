@@ -134,7 +134,7 @@ void ASHGuard::FireAt(const FVector& Target)
 			FRotator R = Aim.Rotation();
 			R.Yaw += FMath::Lerp(-8.f, 8.f, i / 4.f);
 			R.Pitch += FMath::FRandRange(-2.f, 2.f);
-			ASHBullet::Fire(GetWorld(), BulletClass, Muzzle, R.Vector(), this);
+			ASHBullet::Fire(GetWorld(), BulletClass, Muzzle, R.Vector(), this, i == 0);
 		}
 	}
 	else

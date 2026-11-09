@@ -101,6 +101,11 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> FistRoot;
+
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> RewindAudio;
+
+	void UpdateRewindAudio(bool bRewinding);
 	bool bInputBound = false;
 
 	UPROPERTY()

@@ -5,6 +5,9 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "SHTimeSubsystem.generated.h"
 
+class USoundBase;
+class USoundAttenuation;
+
 UCLASS()
 class TIME_API USHTimeSubsystem : public UTickableWorldSubsystem
 {
@@ -26,6 +29,10 @@ public:
 	void AddMeter(float Seconds);
 	void Win();
 
+	/** Play a sound from /Game/SecondHand/Audio by name. 3D sounds fade with distance and pitch down in slow-mo. */
+	void PlaySfx(FName Name, const FVector& Location, float Volume = 1.f, bool b3D = true);
+	USoundBase* GetSound(FName Name);
+
 	/** Show an on-screen hint box for Seconds (real time). */
 	void ShowHint(const FString& Text, float Seconds = 7.f);
 	FString HintText;
@@ -45,6 +52,12 @@ public:
 	float WinTime = 0.f;
 
 	static constexpr float MaxRewind = 4.f;
+	UPROPERTY()
+	TMap<FName, TObjectPtr<USoundBase>> SoundCache;
+
+	UPROPERTY()
+	TObjectPtr<USoundAttenuation> Attenuation;
+
 	static constexpr float FrozenDilation = 0.0001f;   // Unreal's minimum: effectively frozen
 	static constexpr float MeterRegenPerSecond = 0.25f;
 

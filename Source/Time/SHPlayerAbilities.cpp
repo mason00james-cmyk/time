@@ -15,6 +15,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "Misc/App.h"
+#include "Components/AudioComponent.h"
+#include "Sound/SoundBase.h"
 
 USHPlayerAbilities::USHPlayerAbilities()
 {
@@ -130,6 +132,8 @@ void USHPlayerAbilities::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
 	if (!TS) return;
 
+	UpdateRewindAudio(TS->bRewinding);
+
 	if (TS->bRewinding || TS->bDead || TS->bWon)
 	{
 		// The subsystem freezes the world; freeze the player with it.
@@ -177,6 +181,7 @@ void USHPlayerAbilities::Punch()
 	PunchMoveTimer = 0.25f; // punching moves time
 	PunchActive = 0.22f;    // the punch keeps checking for a hit while you lunge
 	FistAnim = 0.f;
+	TS->PlaySfx(TEXT("SFX_PunchSwing"), FVector::ZeroVector, 0.6f, false);
 
 	ACharacter* Char = Cast<ACharacter>(GetOwner());
 	AController* Ctrl = Char ? Char->GetController() : nullptr;
@@ -239,6 +244,7 @@ bool USHPlayerAbilities::PunchSweep()
 		{
 			const FVector Flat = FVector(Fwd.X, Fwd.Y, 0.f).GetSafeNormal();
 			Guard->KnockOut(Flat * PunchForward + FVector(0.f, 0.f, PunchUp));
+			if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) TS->PlaySfx(TEXT("SFX_PunchHit"), Guard->GetActorLocation(), 1.f, false);
 			return true;
 		}
 	}
@@ -262,5 +268,30 @@ void USHPlayerAbilities::RestartLevel()
 	{
 		UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 		UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this)));
+	}
+}
+
+void USHPlayerAbilities::UpdateRewindAudio(bool bRewinding)
+{
+	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
+	if (!TS) return;
+
+	if (bRewinding)
+	{
+		if (!RewindAudio)
+		{
+			if (USoundBase* S = TS->GetSound(TEXT("SFX_Rewind")))
+			{
+				RewindAudio = UGameplayStatics::SpawnSound2D(this, S, 0.7f, 1.f, 0.f, nullptr, false, false);
+			}
+		}
+		else if (!RewindAudio->IsPlaying())
+		{
+			RewindAudio->Play(); // in case the sound isn't set to loop
+		}
+	}
+	else if (RewindAudio && RewindAudio->IsPlaying())
+	{
+		RewindAudio->Stop();
 	}
 }

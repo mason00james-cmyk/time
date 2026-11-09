@@ -49,7 +49,7 @@ void ASHBullet::BeginPlay()
 	}
 }
 
-ASHBullet* ASHBullet::Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* InShooter)
+ASHBullet* ASHBullet::Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* InShooter, bool bPlaySound)
 {
 	if (!World) return nullptr;
 	UClass* SpawnClass = Class ? Class.Get() : ASHBullet::StaticClass();
@@ -63,6 +63,10 @@ ASHBullet* ASHBullet::Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FV
 	Bullet->Velocity = Direction.GetSafeNormal() * Bullet->Speed;
 	Bullet->FinishSpawning(SpawnXform);
 	ASHMuzzleFlash::Spawn(World, Location, Direction.Rotation());
+	if (bPlaySound)
+	{
+		if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(World)) TS->PlaySfx(TEXT("SFX_Gunshot"), Location, 0.8f);
+	}
 	return Bullet;
 }
 
@@ -122,6 +126,7 @@ void ASHBullet::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActo
 		if (Guard->IsAlive())
 		{
 			Guard->KnockOut(Velocity.GetSafeNormal() * GuardKnockback + FVector(0, 0, 150.f));
+			if (USHTimeSubsystem* TS2 = USHTimeSubsystem::Get(this)) TS2->PlaySfx(TEXT("SFX_PunchHit"), Guard->GetActorLocation(), 0.7f);
 			SetRewindAlive(false);
 		}
 	}
