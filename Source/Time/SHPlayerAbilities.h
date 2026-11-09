@@ -45,13 +45,25 @@ public:
 
 	// ---- Punch ----
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
-	float PunchRange = 170.f;
+	float PunchRange = 240.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
-	float PunchRadius = 30.f;
+	float PunchRadius = 55.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
-	float PunchCooldownTime = 0.4f;
+	float PunchCooldownTime = 0.35f;
+
+	/** If a guard is within this distance in front of you, clicking lunges you into him. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
+	float LungeRange = 550.f;
+
+	/** Lunge speed (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
+	float LungeSpeed = 2600.f;
+
+	/** How wide the "in front of you" cone is for lunging (0.5 = 60 degrees each side). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
+	float LungeCone = 0.55f;
 
 	/** Ragdoll launch speed (cm/s) forward and up. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Second Hand|Punch")
@@ -66,6 +78,9 @@ protected:
 private:
 	void BindInput(APlayerController* PC);
 	void Punch();
+	bool PunchSweep();
+	void BuildFist(ACharacter* Char);
+	void UpdateFist(float Real);
 	void RewindPressed();
 	void RewindReleased();
 	void RestartLevel();
@@ -73,6 +88,11 @@ private:
 	float CurrentDilation = 1.f;
 	float PunchCooldown = 0.f;
 	float PunchMoveTimer = 0.f;
+	float PunchActive = 0.f;   // real seconds left in which the punch can still connect
+	float FistAnim = 1.f;      // 0 -> 1 over one punch
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> FistRoot;
 	bool bInputBound = false;
 
 	UPROPERTY()

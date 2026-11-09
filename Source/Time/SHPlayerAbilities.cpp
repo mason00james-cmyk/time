@@ -5,10 +5,14 @@
 #include "SHTimeSubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "Components/InputComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
 #include "Misc/App.h"
 
 USHPlayerAbilities::USHPlayerAbilities()
@@ -34,6 +38,56 @@ void USHPlayerAbilities::BeginPlay()
 	USHRewindComponent* PlayerRewind = NewObject<USHRewindComponent>(GetOwner(), TEXT("PlayerRewind"));
 	PlayerRewind->bRestoreControlRotation = true;
 	PlayerRewind->RegisterComponent();
+
+	if (ACharacter* Char = Cast<ACharacter>(GetOwner())) BuildFist(Char);
+}
+
+void USHPlayerAbilities::BuildFist(ACharacter* Char)
+{
+	UCameraComponent* Cam = Char->FindComponentByClass<UCameraComponent>();
+	if (!Cam) return;
+
+	UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	UStaticMesh* Cyl = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+
+	FistRoot = NewObject<USceneComponent>(Char, TEXT("FistRoot"));
+	FistRoot->SetupAttachment(Cam);
+	FistRoot->RegisterComponent();
+
+	auto Part = [&](const TCHAR* Name, UStaticMesh* Mesh, const FVector& Loc, const FRotator& Rot, const FVector& Scale, const FLinearColor& Color)
+	{
+		UStaticMeshComponent* P = NewObject<UStaticMeshComponent>(Char, Name);
+		P->SetupAttachment(FistRoot);
+		P->SetStaticMesh(Mesh);
+		P->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		P->CastShadow = false;
+		P->SetRelativeLocationAndRotation(Loc, Rot);
+		P->SetRelativeScale3D(Scale);
+		P->RegisterComponent();
+		if (Mat)
+		{
+			P->SetMaterial(0, Mat);
+			if (UMaterialInstanceDynamic* MID = P->CreateDynamicMaterialInstance(0)) MID->SetVectorParameterValue(TEXT("Color"), Color);
+		}
+	};
+
+	// A chunky cartoon fist + sleeve, bottom right of the screen.
+	Part(TEXT("Fist"), Sphere, FVector(0.f, 0.f, 0.f), FRotator::ZeroRotator, FVector(0.13f, 0.11f, 0.11f), FLinearColor(0.62f, 0.40f, 0.24f));
+	Part(TEXT("Sleeve"), Cyl, FVector(-14.f, 0.f, 0.f), FRotator(90.f, 0.f, 0.f), FVector(0.11f, 0.11f, 0.2f), FLinearColor(0.15f, 0.15f, 0.18f));
+	UpdateFist(0.f);
+}
+
+void USHPlayerAbilities::UpdateFist(float Real)
+{
+	if (!FistRoot) return;
+	FistAnim = FMath::Min(1.f, FistAnim + Real / 0.22f);
+	// Out fast, back slower.
+	const float T = FistAnim < 0.3f ? FistAnim / 0.3f : 1.f - (FistAnim - 0.3f) / 0.7f;
+	const float E = FMath::Clamp(T, 0.f, 1.f);
+	const FVector Rest(45.f, 22.f, -24.f);
+	const FVector Out(85.f, 6.f, -10.f);
+	FistRoot->SetRelativeLocation(FMath::Lerp(Rest, Out, E));
 }
 
 void USHPlayerAbilities::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -51,6 +105,12 @@ void USHPlayerAbilities::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	const float Real = FApp::GetDeltaTime(); // undilated
 	PunchCooldown -= Real;
 	PunchMoveTimer -= Real;
+	UpdateFist(Real);
+	if (PunchActive > 0.f)
+	{
+		PunchActive -= Real;
+		if (PunchSweep()) PunchActive = 0.f;
+	}
 
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
 	if (!TS) return;
@@ -100,10 +160,52 @@ void USHPlayerAbilities::Punch()
 
 	PunchCooldown = PunchCooldownTime;
 	PunchMoveTimer = 0.25f; // punching moves time
+	PunchActive = 0.22f;    // the punch keeps checking for a hit while you lunge
+	FistAnim = 0.f;
 
+	ACharacter* Char = Cast<ACharacter>(GetOwner());
+	AController* Ctrl = Char ? Char->GetController() : nullptr;
+	if (!Ctrl) return;
+
+	FVector EyeLoc;
+	FRotator EyeRot;
+	Ctrl->GetPlayerViewPoint(EyeLoc, EyeRot);
+	const FVector Fwd = FVector(EyeRot.Vector().X, EyeRot.Vector().Y, 0.f).GetSafeNormal();
+
+	// Lunge at the closest living guard roughly in front of you.
+	ASHGuard* Best = nullptr;
+	float BestDist = LungeRange;
+	for (TActorIterator<ASHGuard> It(GetWorld()); It; ++It)
+	{
+		ASHGuard* G = *It;
+		if (!G->IsAlive()) continue;
+		FVector To = G->GetActorLocation() - Char->GetActorLocation();
+		To.Z = 0.f;
+		const float D = To.Size();
+		if (D > BestDist || D < 1.f) continue;
+		if (FVector::DotProduct(To / D, Fwd) < LungeCone) continue;
+		FHitResult Block;
+		FCollisionQueryParams P(SCENE_QUERY_STAT(Lunge), false, Char);
+		P.AddIgnoredActor(G);
+		if (GetWorld()->LineTraceSingleByChannel(Block, EyeLoc, G->GetActorLocation(), ECC_Visibility, P)) continue;
+		Best = G;
+		BestDist = D;
+	}
+	if (Best)
+	{
+		FVector Dir = Best->GetActorLocation() - Char->GetActorLocation();
+		Dir.Z = 0.f;
+		Char->LaunchCharacter(Dir.GetSafeNormal() * LungeSpeed + FVector(0.f, 0.f, 50.f), true, true);
+	}
+
+	if (PunchSweep()) PunchActive = 0.f;
+}
+
+bool USHPlayerAbilities::PunchSweep()
+{
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	AController* Ctrl = Pawn ? Pawn->GetController() : nullptr;
-	if (!Ctrl) return;
+	if (!Ctrl) return false;
 
 	FVector EyeLoc;
 	FRotator EyeRot;
@@ -122,9 +224,10 @@ void USHPlayerAbilities::Punch()
 		{
 			const FVector Flat = FVector(Fwd.X, Fwd.Y, 0.f).GetSafeNormal();
 			Guard->KnockOut(Flat * PunchForward + FVector(0.f, 0.f, PunchUp));
-			break;
+			return true;
 		}
 	}
+	return false;
 }
 
 void USHPlayerAbilities::RewindPressed()
