@@ -1,4 +1,6 @@
 #include "SHBullet.h"
+#include "SHGuard.h"
+#include "SHRewindComponent.h"
 #include "SHTimeSubsystem.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -31,6 +33,9 @@ ASHBullet::ASHBullet()
 	if (SphereMesh.Succeeded()) Mesh->SetStaticMesh(SphereMesh.Object);
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> ShapeMat(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	if (ShapeMat.Succeeded()) Mesh->SetMaterial(0, ShapeMat.Object);
+
+	Rewind = CreateDefaultSubobject<USHRewindComponent>(TEXT("Rewind"));
+	Rewind->bDestroyIfRewoundBeforeSpawn = true;
 }
 
 void ASHBullet::BeginPlay()
@@ -41,7 +46,6 @@ void ASHBullet::BeginPlay()
 	{
 		MID->SetVectorParameterValue(TEXT("Color"), Color);
 	}
-	if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) SpawnClock = TS->GameClock;
 }
 
 ASHBullet* ASHBullet::Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* InShooter)
@@ -65,29 +69,58 @@ void ASHBullet::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
-	if (!TS || TS->bDead) return;
+	if (!TS || TS->bRewinding || TS->bDead) return;
 
-	if (TS->GameClock - SpawnClock > LifeSeconds)
+	if (!bLive)
 	{
-		Destroy();
+		if (TS->GameClock - DeadClock > 6.f) Destroy(); // past the rewind window, safe to delete
 		return;
 	}
 
-	// DeltaSeconds is already slowed down by time dilation, so bullets crawl in slow-mo.
+	if (TS->GameClock - Rewind->SpawnClock > LifeSeconds)
+	{
+		SetRewindAlive(false);
+		return;
+	}
+
 	FHitResult Hit;
 	AddActorWorldOffset(Velocity * DeltaSeconds, true, &Hit);
-	if (Hit.bBlockingHit) Destroy();
+	if (Hit.bBlockingHit) SetRewindAlive(false);
+}
+
+void ASHBullet::SetRewindAlive(bool bAlive)
+{
+	bLive = bAlive;
+	SetActorHiddenInGame(!bAlive);
+	Collision->SetCollisionEnabled(bAlive ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	if (!bAlive)
+	{
+		if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) DeadClock = TS->GameClock;
+	}
 }
 
 void ASHBullet::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!OtherActor || OtherActor == this || OtherActor == Shooter) return;
+	if (!bLive || !OtherActor || OtherActor == this || OtherActor == Shooter) return;
 	if (Cast<ASHBullet>(OtherActor)) return;
+
+	USHTimeSubsystem* TS = USHTimeSubsystem::Get(this);
+	if (!TS || TS->bRewinding) return;
 
 	if (OtherActor == UGameplayStatics::GetPlayerPawn(this, 0))
 	{
-		if (USHTimeSubsystem* TS = USHTimeSubsystem::Get(this)) TS->PlayerDied();
-		Destroy();
+		TS->PlayerDied();
+		SetRewindAlive(false);
+		return;
+	}
+
+	if (ASHGuard* Guard = Cast<ASHGuard>(OtherActor))
+	{
+		if (Guard->IsAlive())
+		{
+			Guard->KnockOut(Velocity.GetSafeNormal() * GuardKnockback + FVector(0, 0, 150.f));
+			SetRewindAlive(false);
+		}
 	}
 }

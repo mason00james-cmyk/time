@@ -1,15 +1,17 @@
-// Second Hand - slow, visible bullet. One hit kills the player.
+// Second Hand - slow, visible bullet. Moves itself (no projectile component) so rewind is simple.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "SHRewindable.h"
 #include "SHBullet.generated.h"
 
 class USphereComponent;
 class UStaticMeshComponent;
+class USHRewindComponent;
 
 UCLASS()
-class TIME_API ASHBullet : public AActor
+class TIME_API ASHBullet : public AActor, public ISHRewindable
 {
 	GENERATED_BODY()
 
@@ -21,22 +23,30 @@ public:
 	/** Spawn a bullet flying in Direction. Class may be null (uses ASHBullet). */
 	static ASHBullet* Fire(UWorld* World, TSubclassOf<ASHBullet> Class, const FVector& Location, const FVector& Direction, AActor* Shooter);
 
+	virtual bool IsRewindAlive() const override { return bLive; }
+	virtual void SetRewindAlive(bool bAlive) override;
+
 	/** cm per second at full time speed (1500 = 15 m/s) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bullet")
 	float Speed = 1500.f;
 
-	/** Game seconds before the bullet disappears. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bullet")
 	float LifeSeconds = 8.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bullet")
 	FLinearColor Color = FLinearColor(1.f, 0.35f, 0.05f);
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bullet")
+	float GuardKnockback = 600.f;
+
 	UPROPERTY(VisibleAnywhere, Category = "Bullet")
 	TObjectPtr<USphereComponent> Collision;
 
 	UPROPERTY(VisibleAnywhere, Category = "Bullet")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	UPROPERTY(VisibleAnywhere, Category = "Bullet")
+	TObjectPtr<USHRewindComponent> Rewind;
 
 	UPROPERTY()
 	TObjectPtr<AActor> Shooter;
@@ -51,5 +61,6 @@ protected:
 		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 private:
-	float SpawnClock = 0.f;
+	bool bLive = true;
+	float DeadClock = 0.f;
 };
